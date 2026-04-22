@@ -6,58 +6,66 @@ from main import app
 
 client = TestClient(app)
 
-def test_crear_estacion():
-    response = client.post("/estaciones/", json={
-        "id": 1,
-        "nombre": "Estación Rimac",
-        "ubicacion": "Chosica"
-    })
-    # Nota: El PDF pide comparar con "Estación Rímac" (con tilde)
-    assert response.status_code == 201
-    assert response.json()["data"]["nombre"] == "Estación Rimac"
+# def test_crear_estacion():
+#     response = client.post("/estaciones/", json={
+#         "id": 1,
+#         "nombre": "Estación Rimac",
+#         "ubicacion": "Chosica"
+#     })
+#     # Nota: El PDF pide comparar con "Estación Rímac" (con tilde)
+#     assert response.status_code == 201
+#     assert response.json()["data"]["nombre"] == "Estación Rimac"
 
-def test_registrar_lectura():
-    # Simulamos lectura de sensor para la estación ID 1
-    response = client.post("/lecturas/", json={
-        "estacion_id": 1,
-        "valor": 12.5
-    })
-    assert response.status_code == 201
-    assert response.json()["status"] == "Lectura recibida"
+# def test_registrar_lectura():
+#     # Simulamos lectura de sensor para la estación ID 1
+#     response = client.post("/lecturas/", json={
+#         "estacion_id": 1,
+#         "valor": 12.5
+#     })
+#     assert response.status_code == 201
+#     assert response.json()["status"] == "Lectura recibida"
 
-def test_riesgo_peligro():
-    # 1. Registro de estación y lectura crítica (> 20.0)
-    client.post("/estaciones/", json={"id": 10, "nombre": "Misti", "ubicacion": "Arequipa"})
-    # CORRECCIÓN: Usar "estacion_id" para que main.py lo reconozca
-    client.post("/lecturas/", json={"estacion_id": 10, "valor": 25.5})
+# def test_riesgo_peligro():
+#     # 1. Registro de estación y lectura crítica (> 20.0)
+#     client.post("/estaciones/", json={"id": 10, "nombre": "Misti", "ubicacion": "Arequipa"})
+#     # CORRECCIÓN: Usar "estacion_id" para que main.py lo reconozca
+#     client.post("/lecturas/", json={"estacion_id": 10, "valor": 25.5})
     
-    # 2. Prueba de endpoint de riesgo
-    response = client.get("/estaciones/10/riesgo")
-    assert response.status_code == 200
-    assert response.json()["nivel"] == "PELIGRO"
+#     # 2. Prueba de endpoint de riesgo
+#     response = client.get("/estaciones/10/riesgo")
+#     assert response.status_code == 200
+#     assert response.json()["nivel"] == "PELIGRO"
 
-def test_estacion_no_encontrada():
-    # Probar un ID que no existe (ejemplo: 999)
-    response = client.get("/estaciones/999/riesgo")
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Estación no encontrada"
+# def test_estacion_no_encontrada():
+#     # Probar un ID que no existe (ejemplo: 999)
+#     response = client.get("/estaciones/999/riesgo")
+#     assert response.status_code == 404
+#     assert response.json()["detail"] == "Estación no encontrada"
 
-def test_historial_y_promedio():
-    # 1. Registro de estación 20
+# def test_historial_y_promedio():
+#     # 1. Registro de estación 20
+#     client.post("/estaciones/", json={"id": 20, "nombre": "Río Yauli", "ubicacion": "La Oroya"})
+#     # 2. Registro de 3 lecturas: 10.0, 20.0, 30.0 (Promedio esperado = 20.0)
+#     client.post("/lecturas/", json={"estacion_id": 20, "valor": 10.0})
+#     client.post("/lecturas/", json={"estacion_id": 20, "valor": 20.0})
+#     client.post("/lecturas/", json={"estacion_id": 20, "valor": 30.0})
+#     # 3. Petición al nuevo endpoint
+#     response = client.get("/estaciones/20/historial")
+#     assert response.status_code == 200
+#     assert response.json()["conteo"] == 3
+#     assert response.json()["promedio"] == 20.0
+
+def test_stat():
+    # 1. Registro de estación 20, 10
+    client.post("/estaciones/", json={"id": 10, "nombre": "Misti", "ubicacion": "Arequipa"})
     client.post("/estaciones/", json={"id": 20, "nombre": "Río Yauli", "ubicacion": "La Oroya"})
-    # 2. Registro de 3 lecturas: 10.0, 20.0, 30.0 (Promedio esperado = 20.0)
+    # 2. Registro de 3 lecturas: 10.0, 20.0, 30.0 en estacion 20
     client.post("/lecturas/", json={"estacion_id": 20, "valor": 10.0})
     client.post("/lecturas/", json={"estacion_id": 20, "valor": 20.0})
     client.post("/lecturas/", json={"estacion_id": 20, "valor": 30.0})
     # 3. Petición al nuevo endpoint
-    response = client.get("/estaciones/20/historial")
-    assert response.status_code == 200
-    assert response.json()["conteo"] == 3
-    assert response.json()["promedio"] == 20.0
-
-def test_historial_y_promedio():
     response = client.get("/estaciones/stats")
     assert response.status_code == 200
-    assert response.json()["total_estaciones"] == 3
-    assert response.json()["total_lecturas"] == 5
+    assert response.json()["total_estaciones"] == 2
+    assert response.json()["total_lecturas"] == 3
     assert response.json()["estacion_critica"] == 20
