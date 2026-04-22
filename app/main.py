@@ -7,7 +7,28 @@ from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="SMAT Persistente")
+app = FastAPI(
+    title="SMAT - Sistema de Monitoreo de Alerta Temprana",
+    description="""
+    API robusta para la gestión y monitoreo de desastres naturales.
+    Permite la telemetría de sensores en tiempo real y el cálculo de niveles de riesgo.
+    **Entidades principales:**
+    * **Estaciones:** Puntos de monitoreo físico.
+    * **Lecturas:** Datos capturados por sensores.
+    * **Riesgos:** Análisis de criticidad basado en umbrales.
+    """,
+    version="1.0.0",
+    terms_of_service="http://unmsm.edu.pe/terms/",
+    contact={
+    "name": "Soporte Técnico SMAT - FISI",
+    "url": "http://fisi.unmsm.edu.pe",
+    "email": "desarrollo.smat@unmsm.edu.pe",
+    },
+    license_info={
+    "name": "Apache 2.0",
+    "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    },
+)
 
 class EstacionCreate(BaseModel):
     id: int
@@ -18,7 +39,13 @@ class LecturaCreate(BaseModel):
     estacion_id: int
     valor: float
 
-@app.post("/estaciones/", status_code=201)
+@app.post(
+    "/estaciones/",
+    status_code=201,
+    tags=["Gestión de Infraestructura"],
+    summary="Registrar una nueva estación de monitoreo",
+    description="Inserta una estación física (ej. río, volcán, zona sísmica) en la base de datos relacional."
+)
 def crear_estacion(estacion: EstacionCreate, db: Session = Depends(get_db)):
     nueva_estacion = models.EstacionDB(id=estacion.id, nombre=estacion.nombre,
     ubicacion=estacion.ubicacion)
@@ -27,7 +54,13 @@ def crear_estacion(estacion: EstacionCreate, db: Session = Depends(get_db)):
     db.refresh(nueva_estacion)
     return {"msj": "Estación guardada en DB", "data": nueva_estacion}
 
-@app.post("/lecturas/", status_code=201)
+@app.post(
+    "/lecturas/",
+    status_code=201,
+    tags=["Telemetría de Sensores"],
+    summary="Recibir datos de telemetría",
+    description="Recibe el valor capturado por un sensor y lo vincula a una estación existente mediante su ID."
+)
 def registrar_lectura(lectura: LecturaCreate, db: Session = Depends(get_db)):
     estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == lectura.estacion_id).first()
     if not estacion:
@@ -38,12 +71,23 @@ def registrar_lectura(lectura: LecturaCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "Lectura guardada en DB"}
 
-@app.get("/estaciones/", response_model=List[EstacionCreate], status_code=201)
+@app.get(
+    "/estaciones/",
+    response_model=List[EstacionCreate],
+    tags=["Gestión de Infraestructura"],
+    summary="Listar las estaciones de monitoreo",
+    description="Obtiene la lista de las estaciones existentes en la base de datos relacional"
+)
 def listar_estaciones(db: Session = Depends(get_db)):
     estaciones = db.query(models.EstacionDB).all()
     return estaciones
 
-@app.get("/estaciones/{id}/riesgo", status_code=201)
+@app.get(
+    "/estaciones/{id}/riesgo",
+    tags=["Análisis de Riesgo"],
+    summary="Evaluar nivel de peligro actual",
+    description="Analiza la última lectura recibida de una estación y determina si el estado es NORMAL, ALERTA o PELIGRO."
+)
 async def obtener_riesgo(id: int, db: Session = Depends(get_db)):
     estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == id).first()
     if not estacion:
@@ -60,7 +104,12 @@ async def obtener_riesgo(id: int, db: Session = Depends(get_db)):
         nivel = "NORMAL"
     return {"id": id, "valor": ultima_lectura, "nivel": nivel}
 
-@app.get("/estaciones/{id}/historial", status_code=201)
+@app.get(
+    "/estaciones/{id}/historial",
+    tags=["Reportes Históricos"],
+    summary="Mostrar el histórico, conteo y el promedio de lecturas",
+    description="Muestra el histórico de las lecturas vinculadas a una estación existente y realiza el cálculo del promedio y conteo de lecturas del histórico mostrado"
+)
 async def obtener_historial(id: int, db: Session = Depends(get_db)):
     estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == id).first()
     if not estacion:
