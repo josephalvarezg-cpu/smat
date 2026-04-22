@@ -54,3 +54,10 @@ def test_historial_y_promedio():
     assert response.status_code == 200
     assert response.json()["conteo"] == 3
     assert response.json()["promedio"] == 20.0
+
+def test_historial_y_promedio():
+    response = client.get("/estaciones/stats")
+    assert response.status_code == 200
+    assert response.json()["total_estaciones"] == 3
+    assert response.json()["total_lecturas"] == 5
+    assert response.json()["estacion_critica"] == 20

@@ -125,3 +125,27 @@ async def obtener_historial(id: int, db: Session = Depends(get_db)):
         "conteo": len(lecturas),
         "promedio": round(promedio, 2)
     }    
+
+@app.get(
+    "/estaciones/stats",
+    tags=["Reportes Ejecutivos"],
+    summary="Mostrar el conteo de estaciones, lecturas y la estacion en punto crítico máximo",
+    description="Muestra el conteo de las estaciones monitoreadas y del histórico de lecturas totales; y muestra la estación con el valor de lectura mas alto (Punto crítico máximo)"
+)
+def obtener_historial_stats(db: Session = Depends(get_db)):
+    # Lista de todas las estaciones
+    estaciones = db.query(models.EstacionDB).all()
+    # Query de la tabla LecturaDB
+    lecturas_query = db.query(models.LecturaDB)
+    # Lista de todas las lecturas
+    lecturas = lecturas_query.all()
+    # Objeto con la lectura mas alta
+    lectura_critica = lecturas_query.order_by(desc(models.LecturaDB.valor)).first()
+    if not lectura_critica:
+        raise HTTPException(status_code = 404, detail="Información de lectura crítica no encontrada")
+    else:
+        return {
+            "total_estaciones": len(estaciones),
+            "total_lecturas": len(lecturas),
+            "estacion_critica": lectura_critica.estacion_id
+        }
