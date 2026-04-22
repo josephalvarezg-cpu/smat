@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from typing import List, Optional
 import models
+import schemas
+import crud
 from database import engine, get_db
+from app.auth import crear_token_acceso, obtener_identidad_actual
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -30,15 +32,12 @@ app = FastAPI(
     },
 )
 
-class EstacionCreate(BaseModel):
-    id: int
-    nombre: str
-    ubicacion: str
+@app.post("/token", tags=["Seguridad"])
+    async def login_para_obtener_token():
+    # En la Unidad II esto validará contra la tabla de usuarios
+    return {"access_token": crear_token_acceso({"sub": "admin_smat"}), "token_type": "bearer"}
 
-class LecturaCreate(BaseModel):
-    estacion_id: int
-    valor: float
-
+# Endpoint Protegido: Solo accesible con Token válido
 @app.post(
     "/estaciones/",
     status_code=201,
@@ -46,13 +45,12 @@ class LecturaCreate(BaseModel):
     summary="Registrar una nueva estación de monitoreo",
     description="Inserta una estación física (ej. río, volcán, zona sísmica) en la base de datos relacional."
 )
-def crear_estacion(estacion: EstacionCreate, db: Session = Depends(get_db)):
-    nueva_estacion = models.EstacionDB(id=estacion.id, nombre=estacion.nombre,
-    ubicacion=estacion.ubicacion)
-    db.add(nueva_estacion)
-    db.commit()
-    db.refresh(nueva_estacion)
-    return {"msj": "Estación guardada en DB", "data": nueva_estacion}
+def crear_estacion(
+    estacion: schemas.EstacionCreate,
+    db: Session = Depends(get_db),
+    usuario: str = Depends(obtener_identidad_actual) # PROTECCIÓN JWT
+):
+    return crud.crear_estacion(db=db, estacion=estacion)
 
 @app.post(
     "/lecturas/",
@@ -61,7 +59,7 @@ def crear_estacion(estacion: EstacionCreate, db: Session = Depends(get_db)):
     summary="Recibir datos de telemetría",
     description="Recibe el valor capturado por un sensor y lo vincula a una estación existente mediante su ID."
 )
-def registrar_lectura(lectura: LecturaCreate, db: Session = Depends(get_db)):
+def registrar_lectura(lectura: schemas.LecturaCreate, db: Session = Depends(get_db)):
     estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == lectura.estacion_id).first()
     if not estacion:
         raise HTTPException(status_code=404, detail="Estación no existe")
@@ -73,7 +71,7 @@ def registrar_lectura(lectura: LecturaCreate, db: Session = Depends(get_db)):
 
 @app.get(
     "/estaciones/",
-    response_model=List[EstacionCreate],
+    response_model=List[schemas.EstacionCreate],
     tags=["Gestión de Infraestructura"],
     summary="Listar las estaciones de monitoreo",
     description="Obtiene la lista de las estaciones existentes en la base de datos relacional"
@@ -125,6 +123,15 @@ async def obtener_historial(id: int, db: Session = Depends(get_db)):
         "conteo": len(lecturas),
         "promedio": round(promedio, 2)
     }    
+
+@app.get(
+    "/estaciones/criticos",
+    tags=["Auditoria"],
+    summary="",
+    description=""
+)
+def obtener_criticos():
+    raise HTTPException(status_code = 501, detail="No implementado")
 
 @app.get(
     "/estaciones/stats",
