@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import models
-import schemas
-import crud
-from database import engine, get_db
-from app.auth import crear_token_acceso, obtener_identidad_actual
+from . import models
+from . import schemas
+from . import crud
+from .database import engine, get_db
+from .auth import crear_token_acceso, obtener_identidad_actual
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -33,7 +33,7 @@ app = FastAPI(
 )
 
 @app.post("/token", tags=["Seguridad"])
-    async def login_para_obtener_token():
+async def login_para_obtener_token():
     # En la Unidad II esto validará contra la tabla de usuarios
     return {"access_token": crear_token_acceso({"sub": "admin_smat"}), "token_type": "bearer"}
 
@@ -59,15 +59,12 @@ def crear_estacion(
     summary="Recibir datos de telemetría",
     description="Recibe el valor capturado por un sensor y lo vincula a una estación existente mediante su ID."
 )
-def registrar_lectura(lectura: schemas.LecturaCreate, db: Session = Depends(get_db)):
-    estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == lectura.estacion_id).first()
-    if not estacion:
-        raise HTTPException(status_code=404, detail="Estación no existe")
-    nueva_lectura = models.LecturaDB(valor=lectura.valor,
-    estacion_id=lectura.estacion_id)
-    db.add(nueva_lectura)
-    db.commit()
-    return {"status": "Lectura guardada en DB"}
+def registrar_lectura(
+    lectura: schemas.LecturaCreate, 
+    db: Session = Depends(get_db),
+    usuario: str = Depends(obtener_identidad_actual)
+    ):
+    return crud.registrar_lectura(lectura=lectura, db=db)
 
 @app.get(
     "/estaciones/",
@@ -76,9 +73,11 @@ def registrar_lectura(lectura: schemas.LecturaCreate, db: Session = Depends(get_
     summary="Listar las estaciones de monitoreo",
     description="Obtiene la lista de las estaciones existentes en la base de datos relacional"
 )
-def listar_estaciones(db: Session = Depends(get_db)):
-    estaciones = db.query(models.EstacionDB).all()
-    return estaciones
+def listar_estaciones(
+    db: Session = Depends(get_db), 
+    #usuario: str = Depends(obtener_identidad_actual)
+    ):
+    return crud.listar_estaciones(db=db)
 
 @app.get(
     "/estaciones/{id}/riesgo",
@@ -86,21 +85,11 @@ def listar_estaciones(db: Session = Depends(get_db)):
     summary="Evaluar nivel de peligro actual",
     description="Analiza la última lectura recibida de una estación y determina si el estado es NORMAL, ALERTA o PELIGRO."
 )
-async def obtener_riesgo(id: int, db: Session = Depends(get_db)):
-    estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == id).first()
-    if not estacion:
-        raise HTTPException(status_code = 404, detail="Estación no encontrada")
-    lecturas = db.query(models.LecturaDB).filter(models.LecturaDB.estacion_id == id).all()
-    if not lecturas:
-        return {"id": id, "nivel": "SIN DATOS", "valor": 0}
-    ultima_lectura = lecturas[-1].valor
-    if ultima_lectura > 20.0:
-        nivel = "PELIGRO"
-    elif ultima_lectura > 10.0:
-        nivel = "ALERTA"
-    else:
-        nivel = "NORMAL"
-    return {"id": id, "valor": ultima_lectura, "nivel": nivel}
+def obtener_riesgo(
+    id: int, 
+    db: Session = Depends(get_db),
+    usuario: str = Depends(obtener_identidad_actual)):
+    return crud.obtener_riesgo(id=id, db=db)
 
 @app.get(
     "/estaciones/{id}/historial",
@@ -108,21 +97,11 @@ async def obtener_riesgo(id: int, db: Session = Depends(get_db)):
     summary="Mostrar el histórico, conteo y el promedio de lecturas",
     description="Muestra el histórico de las lecturas vinculadas a una estación existente y realiza el cálculo del promedio y conteo de lecturas del histórico mostrado"
 )
-async def obtener_historial(id: int, db: Session = Depends(get_db)):
-    estacion = db.query(models.EstacionDB).filter(models.EstacionDB.id == id).first()
-    if not estacion:
-        raise HTTPException(status_code = 404, detail="Estación no encontrada")
-    lecturas = db.query(models.LecturaDB).filter(models.LecturaDB.estacion_id == id).all()
-    if len(lecturas) > 0:
-        promedio = sum(l.valor for l in lecturas) / len(lecturas)
-    else:
-        promedio = 0.0
-    return {
-        "estacion_id": id,
-        "lecturas": lecturas,
-        "conteo": len(lecturas),
-        "promedio": round(promedio, 2)
-    }    
+async def obtener_historial(
+    id: int, 
+    db: Session = Depends(get_db),
+    usuario: str = Depends(obtener_identidad_actual)):
+    return crud.obtener_historial(id=id, db=db)
 
 @app.get(
     "/estaciones/criticos",
@@ -139,20 +118,7 @@ def obtener_criticos():
     summary="Mostrar el conteo de estaciones, lecturas y la estacion en punto crítico máximo",
     description="Muestra el conteo de las estaciones monitoreadas y del histórico de lecturas totales; y muestra la estación con el valor de lectura mas alto (Punto crítico máximo)"
 )
-def obtener_historial_stats(db: Session = Depends(get_db)):
-    # Lista de todas las estaciones
-    estaciones = db.query(models.EstacionDB).all()
-    # Query de la tabla LecturaDB
-    lecturas_query = db.query(models.LecturaDB)
-    # Lista de todas las lecturas
-    lecturas = lecturas_query.all()
-    # Objeto con la lectura mas alta
-    lectura_critica = lecturas_query.order_by(desc(models.LecturaDB.valor)).first()
-    if not lectura_critica:
-        raise HTTPException(status_code = 404, detail="Información de lectura crítica no encontrada")
-    else:
-        return {
-            "total_estaciones": len(estaciones),
-            "total_lecturas": len(lecturas),
-            "estacion_critica": lectura_critica.estacion_id
-        }
+def obtener_historial_stats(
+    db: Session = Depends(get_db),
+    usuario: str = Depends(obtener_identidad_actual)):
+    return obtener_historial_stats(db=db)
